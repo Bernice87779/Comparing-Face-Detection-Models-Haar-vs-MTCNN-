@@ -1,0 +1,74 @@
+# Install required libraries
+!pip install -q opencv-python mtcnn gradio
+
+# Import libraries
+import cv2
+import numpy as np
+import matplotlib.pyplot as plt
+from mtcnn import MTCNN
+import gradio as gr
+
+# Download and unzip test images and Haar cascade files
+!gdown '1VF-WVHOwfZYijEsAEF7ufNtuNUFqyIDJ' --output face_images.zip
+!unzip -o face_images.zip
+!gdown '1IcRnaWQNgI5ukoeA_XqIxgIgA2o663N8' --output haar.zip
+!unzip -o haar.zip
+
+# Load face detection models
+haar_detector = cv2.CascadeClassifier('/content/haar/haarcascade_frontalface_alt.xml')
+mtcnn_detector = MTCNN()
+
+# Define Haar detection function
+def detect_faces_haar(img):
+    img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    faces = haar_detector.detectMultiScale(img_rgb)
+    for x, y, w, h in faces:
+        cv2.rectangle(img_rgb, (x, y), (x + w, y + h), (255, 0, 0), 2)
+    return img_rgb, len(faces)
+
+# Define MTCNN detection function
+def detect_faces_mtcnn(img):
+    img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    faces = mtcnn_detector.detect_faces(img_rgb)
+    for face in faces:
+        x, y, w, h = face['box']
+        cv2.rectangle(img_rgb, (x, y), (x + w, y + h), (0, 255, 0), 2)
+        for key, value in face['keypoints'].items():
+            cv2.circle(img_rgb, value, 2, (255, 0, 255), -1)
+    return img_rgb, len(faces)
+
+# Compare detectors on static image
+def compare_detectors(image_path):
+    img = cv2.imread(image_path)
+    img_haar, count_haar = detect_faces_haar(img.copy())
+    img_mtcnn, count_mtcnn = detect_faces_mtcnn(img.copy())
+
+    print(f"[Haar] Detected {count_haar} face(s)")
+    print(f"[MTCNN] Detected {count_mtcnn} face(s)")
+
+    fig, ax = plt.subplots(1, 2, figsize=(12, 6))
+    ax[0].imshow(img_haar)
+    ax[0].set_title(f"Haar: {count_haar} face(s)")
+    ax[1].imshow(img_mtcnn)
+    ax[1].set_title(f"MTCNN: {count_mtcnn} face(s)")
+    for a in ax:
+        a.axis('off')
+    plt.tight_layout()
+    plt.show()
+
+# Run a comparison test
+compare_detectors('/content/face_images/people5.jpg')
+
+# Gradio interface for uploading image
+def detect_and_compare(path):
+    img = cv2.imread(path)
+    _, hcount = detect_faces_haar(img.copy())
+    _, mcount = detect_faces_mtcnn(img.copy())
+    return f"Haar: {hcount} face(s) detected, MTCNN: {mcount} face(s) detected", path
+
+gr.Interface(fn=detect_and_compare,
+             inputs=gr.Image(type='filepath', sources='upload'),
+             outputs=['text', 'image'],
+             title="Face Detector Comparison",
+             description="Upload an image to see face detection results from Haar and MTCNN."
+            ).launch()
